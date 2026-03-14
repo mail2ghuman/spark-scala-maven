@@ -6,19 +6,13 @@ import org.scalatest.BeforeAndAfterAll
 
 class SparkAppTest extends AnyFunSuite with BeforeAndAfterAll {
 
-  var spark: SparkSession = _
-
-  override def beforeAll(): Unit = {
-    spark = SparkSession.builder()
-      .appName("SparkAppTest")
-      .master("local[*]")
-      .getOrCreate()
-  }
+  private lazy val spark: SparkSession = SparkSession.builder()
+    .appName("SparkAppTest")
+    .master("local[*]")
+    .getOrCreate()
 
   override def afterAll(): Unit = {
-    if (spark != null) {
-      spark.stop()
-    }
+    spark.stop()
   }
 
   test("DataFrame should be created with correct schema") {
