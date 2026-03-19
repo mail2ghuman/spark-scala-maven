@@ -126,4 +126,64 @@ class BillingPipelineTest extends AnyFunSuite with BeforeAndAfterAll {
     assert(row.getAs[Long]("total_transactions") === 3)
     assert(row.getAs[Double]("total_payment_volume") === 800.0)
   }
+
+  test("enrichForStorage should add generated_at and billing_period columns") {
+    import spark.implicits._
+
+    val transactions = Seq(
+      ("TXN1", "ACC-001", 100.0, "USD", "2026-03-01T10:00:00Z", "Amazon", "Retail"),
+      ("TXN2", "ACC-002", 500.0, "USD", "2026-03-01T10:00:00Z", "Apple", "Electronics")
+    ).toDF("transaction_id", "account_number", "amount", "currency", "timestamp", "merchant", "category")
+
+    val aggregated = BillingPipeline.aggregateByAccount(transactions)
+    val report = BillingPipeline.applyPricing(aggregated)
+    val enriched = BillingPipeline.enrichForStorage(report)
+
+    assert(enriched.columns.contains("generated_at"))
+    assert(enriched.columns.contains("billing_period"))
+    assert(enriched.count() === 2)
+
+    val billingPeriod = enriched.select("billing_period").first().getString(0)
+    assert(billingPeriod.matches("\\d{4}-\\d{2}"))
+  }
+
+  test("saveToMonitoringBills should persist data to monitoring_bills table") {
+    import spark.implicits._
+
+    val transactions = Seq(
+      ("TXN1", "ACC-001", 100.0, "USD", "2026-03-01T10:00:00Z", "Amazon", "Retail"),
+      ("TXN2", "ACC-001", 200.0, "USD", "2026-03-01T11:00:00Z", "Best Buy", "Electronics"),
+      ("TXN3", "ACC-002", 500.0, "USD", "2026-03-01T10:00:00Z", "Apple", "Electronics")
+    ).toDF("transaction_id", "account_number", "amount", "currency", "timestamp", "merchant", "category")
+
+    val aggregated = BillingPipeline.aggregateByAccount(transactions)
+    val report = BillingPipeline.applyPricing(aggregated)
+
+    // Drop table if it exists from a previous test run
+    spark.sql("DROP TABLE IF EXISTS monitoring_bills")
+
+    BillingPipeline.saveToMonitoringBills(spark, report)
+
+    val savedTable = spark.table("monitoring_bills")
+    assert(savedTable.count() === 2)
+
+    // Verify all expected columns exist
+    val expectedColumns = Set(
+      "account_number", "transaction_count", "total_volume",
+      "avg_transaction_amount", "min_transaction_amount", "max_transaction_amount",
+      "unique_merchants", "unique_categories",
+      "tiered_fee", "processing_fee", "platform_fee",
+      "total_billing_amount", "effective_rate_per_txn",
+      "generated_at", "billing_period"
+    )
+    assert(expectedColumns.subsetOf(savedTable.columns.toSet))
+
+    // Verify append mode: save again and check row count doubles
+    BillingPipeline.saveToMonitoringBills(spark, report)
+    val updatedTable = spark.table("monitoring_bills")
+    assert(updatedTable.count() === 4)
+
+    // Clean up
+    spark.sql("DROP TABLE IF EXISTS monitoring_bills")
+  }
 }

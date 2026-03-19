@@ -1,6 +1,6 @@
 package com.example.spark
 
-import org.apache.spark.sql.{DataFrame, SparkSession}
+import org.apache.spark.sql.{DataFrame, SaveMode, SparkSession}
 import org.apache.spark.sql.functions._
 import org.apache.spark.sql.types._
 
@@ -78,6 +78,9 @@ object BillingPipeline {
       .csv(outputPath)
 
     println(s"\nBilling report written to: $outputPath")
+
+    // Persist billing report to the monitoring_bills table
+    saveToMonitoringBills(spark, billingReport)
 
     val summary = generateSummary(billingReport)
     summary.show(truncate = false)
@@ -159,6 +162,29 @@ object BillingPipeline {
     }
 
     BigDecimal(fee).setScale(2, BigDecimal.RoundingMode.HALF_UP).toDouble
+  }
+
+  /**
+   * Save the billing report to the monitoring_bills table.
+   * Adds a generated_at timestamp and a billing_period column.
+   * Uses append mode so historical billing records are preserved.
+   */
+  def saveToMonitoringBills(spark: SparkSession, billingReport: DataFrame): Unit = {
+    val enriched = enrichForStorage(billingReport)
+
+    enriched.write
+      .mode(SaveMode.Append)
+      .saveAsTable("monitoring_bills")
+
+    val rowCount = spark.table("monitoring_bills").count()
+    println(s"\n--- Saved to monitoring_bills table ($rowCount total rows) ---")
+  }
+
+  /** Enrich the billing report with metadata columns before persisting. */
+  def enrichForStorage(billingReport: DataFrame): DataFrame = {
+    billingReport
+      .withColumn("generated_at", current_timestamp())
+      .withColumn("billing_period", date_format(current_timestamp(), "yyyy-MM"))
   }
 
   /** Generate a high-level summary of the billing report. */
