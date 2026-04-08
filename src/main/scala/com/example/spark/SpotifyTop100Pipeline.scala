@@ -11,6 +11,7 @@ import org.apache.spark.sql.types._
  *
  * Reads top2018.csv.zip and produces the following analytics (printed to stdout):
  *   1. Artists with the most Top 100 songs
+ *   1b. Artists with the most Top 10 songs
  *   2. Comparison: artists with "Lil" vs "DJ" in their name
  *   3. Most strongly correlated song attributes
  *   4. Attribute variability (stddev) — most and least variable
@@ -44,6 +45,13 @@ object SpotifyTop100Pipeline {
     println("=" * 60)
     val topArtists = artistsWithMostSongs(songs)
     topArtists.show(20, truncate = false)
+
+    // 1b. Artists with the most Top 10 songs
+    println("\n" + "=" * 60)
+    println("1b. Artists with the Most Top 10 Songs")
+    println("=" * 60)
+    val top10Artists = artistsWithMostTop10Songs(songs)
+    top10Artists.show(10, truncate = false)
 
     // 2. "Lil" vs "DJ" artists
     println("\n" + "=" * 60)
@@ -90,6 +98,26 @@ object SpotifyTop100Pipeline {
    */
   def artistsWithMostSongs(songs: DataFrame): DataFrame = {
     songs.groupBy("artists")
+      .agg(
+        count("name").as("song_count"),
+        concat_ws(", ", collect_list("name")).as("songs")
+      )
+      .orderBy(desc("song_count"))
+  }
+
+  /**
+   * 1b. Identify artists that had the most Top 10 songs.
+   * The CSV is ordered by ranking, so we assign a rank via row_number
+   * and filter to the top 10.
+   * Returns a DataFrame of (artists, song_count, songs) ordered by song_count desc.
+   */
+  def artistsWithMostTop10Songs(songs: DataFrame): DataFrame = {
+    val withRank = songs.withColumn("rank",
+      row_number().over(org.apache.spark.sql.expressions.Window.orderBy(monotonically_increasing_id()))
+    )
+    val top10 = withRank.filter(col("rank") <= 10)
+
+    top10.groupBy("artists")
       .agg(
         count("name").as("song_count"),
         concat_ws(", ", collect_list("name")).as("songs")

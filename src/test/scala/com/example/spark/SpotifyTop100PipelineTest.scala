@@ -1,6 +1,7 @@
 package com.example.spark
 
 import org.apache.spark.sql.SparkSession
+import org.apache.spark.sql.functions.sum
 import org.scalatest.funsuite.AnyFunSuite
 import org.scalatest.BeforeAndAfterAll
 
@@ -61,6 +62,24 @@ class SpotifyTop100PipelineTest extends AnyFunSuite with BeforeAndAfterAll {
     val dj = result.filter($"artist_category" === "DJ").first()
     assert(dj.getAs[Long]("artist_count") === 1)
     assert(dj.getAs[Long]("song_count") === 1)
+  }
+
+  test("artistsWithMostTop10Songs should return artists from the top 10 ranked songs") {
+    import spark.implicits._
+
+    val path = this.getClass.getClassLoader.getResource("sample-data/spotify_top100_sample.csv").getPath
+    val songs = SpotifyTop100Pipeline.readSongs(spark, path)
+    val result = SpotifyTop100Pipeline.artistsWithMostTop10Songs(songs)
+
+    assert(result.columns.toSet === Set("artists", "song_count", "songs"))
+
+    // Sample CSV has 8 rows, so all 8 are within the top 10
+    // Drake and Post Malone each have 2 songs
+    val totalSongs = result.agg(sum($"song_count")).first().getLong(0)
+    assert(totalSongs === 8)
+
+    val drake = result.filter($"artists" === "Drake").first()
+    assert(drake.getAs[Long]("song_count") === 2)
   }
 
   test("attributeCorrelations should return pairwise correlations with correct schema") {
