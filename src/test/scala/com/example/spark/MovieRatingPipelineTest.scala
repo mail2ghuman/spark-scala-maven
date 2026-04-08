@@ -28,11 +28,11 @@ class MovieRatingPipelineTest extends AnyFunSuite with BeforeAndAfterAll {
     import spark.implicits._
 
     val movies = Seq(
-      ("Movie A", 45),
-      ("Movie B", 70),
+      ("Movie A", 30),
+      ("Movie B", 50),
       ("Movie C", 90),
-      ("Movie D", 59),
-      ("Movie E", 80)
+      ("Movie D", 39),
+      ("Movie E", 70)
     ).toDF("movie_title", "tomatometer_rating")
 
     val categorized = MovieRatingPipeline.categorizeMovies(movies)
@@ -55,13 +55,13 @@ class MovieRatingPipelineTest extends AnyFunSuite with BeforeAndAfterAll {
     assert(movieE.getAs[String]("category") === "Great")
   }
 
-  test("categorizeMovies boundary: rating 60 should be Good, 79 should be Good, 80 should be Great") {
+  test("categorizeMovies boundary: rating 40 should be Good, 69 should be Good, 70 should be Great") {
     import spark.implicits._
 
     val movies = Seq(
-      ("Boundary Low", 60),
-      ("Boundary Mid", 79),
-      ("Boundary High", 80)
+      ("Boundary Low", 40),
+      ("Boundary Mid", 69),
+      ("Boundary High", 70)
     ).toDF("movie_title", "tomatometer_rating")
 
     val categorized = MovieRatingPipeline.categorizeMovies(movies)
@@ -80,8 +80,8 @@ class MovieRatingPipelineTest extends AnyFunSuite with BeforeAndAfterAll {
     import spark.implicits._
 
     val movies = Seq(
-      ("Movie A", 45),
-      ("Movie B", 70),
+      ("Movie A", 50),
+      ("Movie B", 75),
       ("Movie C", 90),
       ("Movie D", 30),
       ("Movie E", 85)
@@ -94,18 +94,18 @@ class MovieRatingPipelineTest extends AnyFunSuite with BeforeAndAfterAll {
     assert(summary.count() === 3)
 
     val bad = summary.filter($"category" === "Bad").first()
-    assert(bad.getAs[Long]("count") === 2)
+    assert(bad.getAs[Long]("count") === 1)
     val badMovies = bad.getAs[String]("movies")
-    assert(badMovies.contains("Movie A"))
     assert(badMovies.contains("Movie D"))
 
     val good = summary.filter($"category" === "Good").first()
     assert(good.getAs[Long]("count") === 1)
-    assert(good.getAs[String]("movies").contains("Movie B"))
+    assert(good.getAs[String]("movies").contains("Movie A"))
 
     val great = summary.filter($"category" === "Great").first()
-    assert(great.getAs[Long]("count") === 2)
+    assert(great.getAs[Long]("count") === 3)
     val greatMovies = great.getAs[String]("movies")
+    assert(greatMovies.contains("Movie B"))
     assert(greatMovies.contains("Movie C"))
     assert(greatMovies.contains("Movie E"))
   }
@@ -114,8 +114,8 @@ class MovieRatingPipelineTest extends AnyFunSuite with BeforeAndAfterAll {
     import spark.implicits._
 
     val movies = Seq(
-      ("Movie A", 45),
-      ("Movie B", 70),
+      ("Movie A", 30),
+      ("Movie B", 50),
       ("Movie C", 90)
     ).toDF("movie_title", "tomatometer_rating")
 

@@ -9,9 +9,9 @@ import org.apache.spark.sql.types._
  * based on its tomatometer_rating, and saves a summary to a Parquet table.
  *
  * Rating categories (based on tomatometer_rating):
- *   Bad:   rating < 60
- *   Good:  rating >= 60 and < 80
- *   Great: rating >= 80
+ *   Bad:   rating < 40
+ *   Good:  rating >= 40 and < 70
+ *   Great: rating >= 70
  *
  * Output table: movie_ratings (Parquet)
  *   category: String  — "Bad", "Good", or "Great"
@@ -20,8 +20,8 @@ import org.apache.spark.sql.types._
  */
 object MovieRatingPipeline {
 
-  val BAD_THRESHOLD = 60
-  val GOOD_THRESHOLD = 80
+  val BAD_THRESHOLD = 40
+  val GOOD_THRESHOLD = 70
 
   def main(args: Array[String]): Unit = {
     val spark = SparkSession.builder()
@@ -67,9 +67,9 @@ object MovieRatingPipeline {
 
   /**
    * Add a "category" column based on tomatometer_rating:
-   *   Bad:   rating < 60
-   *   Good:  rating >= 60 and < 80
-   *   Great: rating >= 80
+   *   Bad:   rating < 40
+   *   Good:  rating >= 40 and < 70
+   *   Great: rating >= 70
    */
   def categorizeMovies(movies: DataFrame): DataFrame = {
     movies.withColumn("category",
