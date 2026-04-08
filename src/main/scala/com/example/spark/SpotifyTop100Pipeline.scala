@@ -1,8 +1,8 @@
 package com.example.spark
 
-import org.apache.spark.sql.{DataFrame, SparkSession}
+import org.apache.spark.sql.{DataFrame, Row, SparkSession}
 import org.apache.spark.sql.functions._
-import org.apache.spark.sql.types._
+import org.apache.spark.sql.types.{LongType, StructField, StructType}
 
 /**
  * SpotifyTop100Pipeline — Analytics report on the Spotify Top 100 songs of 2018.
@@ -112,9 +112,13 @@ object SpotifyTop100Pipeline {
    * Returns a DataFrame of (artists, song_count, songs) ordered by song_count desc.
    */
   def artistsWithMostTop10Songs(songs: DataFrame): DataFrame = {
-    val withRank = songs.withColumn("rank",
-      row_number().over(org.apache.spark.sql.expressions.Window.orderBy(monotonically_increasing_id()))
-    )
+    val spark = songs.sparkSession
+    val schema = songs.schema
+    val indexedRdd = songs.rdd.zipWithIndex().map { case (row, idx) =>
+      Row.fromSeq(row.toSeq :+ (idx + 1L))
+    }
+    val newSchema = StructType(schema.fields :+ StructField("rank", LongType, nullable = false))
+    val withRank = spark.createDataFrame(indexedRdd, newSchema)
     val top10 = withRank.filter(col("rank") <= 10)
 
     top10.groupBy("artists")
@@ -164,7 +168,9 @@ object SpotifyTop100Pipeline {
 
     val correlationRows = pairs.map { case (attr1, attr2) =>
       val corr = songs.stat.corr(attr1, attr2)
-      (attr1, attr2, BigDecimal(corr).setScale(4, BigDecimal.RoundingMode.HALF_UP).toDouble, math.abs(corr))
+      val corrRounded = if (corr.isNaN) Double.NaN
+        else BigDecimal(corr).setScale(4, BigDecimal.RoundingMode.HALF_UP).toDouble
+      (attr1, attr2, corrRounded, if (corr.isNaN) Double.NaN else math.abs(corr))
     }
 
     correlationRows.toDF("attribute_1", "attribute_2", "correlation", "abs_correlation")
@@ -191,12 +197,14 @@ object SpotifyTop100Pipeline {
 
       val meanVal = row.getDouble(0)
       val stddevVal = row.getDouble(1)
-      val cv = if (math.abs(meanVal) > 1e-10) stddevVal / math.abs(meanVal) else 0.0
+      val cv = if (meanVal.isNaN || stddevVal.isNaN || math.abs(meanVal) < 1e-10) 0.0
+        else stddevVal / math.abs(meanVal)
 
-      (attr,
-        BigDecimal(meanVal).setScale(4, BigDecimal.RoundingMode.HALF_UP).toDouble,
-        BigDecimal(stddevVal).setScale(4, BigDecimal.RoundingMode.HALF_UP).toDouble,
-        BigDecimal(cv).setScale(4, BigDecimal.RoundingMode.HALF_UP).toDouble)
+      def safeRound(v: Double): Double =
+        if (v.isNaN) Double.NaN
+        else BigDecimal(v).setScale(4, BigDecimal.RoundingMode.HALF_UP).toDouble
+
+      (attr, safeRound(meanVal), safeRound(stddevVal), safeRound(cv))
     }
 
     stats.toDF("attribute", "mean", "stddev", "coeff_of_variation")
